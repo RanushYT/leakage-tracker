@@ -1,65 +1,254 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
+import { Flame, AlertCircle, TrendingDown, Coffee, ShoppingBag, Home, FileText, ArrowRight, User, Plus } from 'lucide-react';
+import Link from 'next/link';
+
+export default function Dashboard() {
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [roast, setRoast] = useState('');
+  const [isRoasting, setIsRoasting] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [expenseText, setExpenseText] = useState('');
+  const [addingExpense, setAddingExpense] = useState(false);
+  const router = useRouter();
+  
+  const fetchTransactions = async (uid: string) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false });
+
+    if (error) console.error(error);
+    else setTransactions(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    async function loadData() {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileData) {
+        setProfile(profileData);
+        if (profileData.whatsapp_number) {
+          fetchTransactions(profileData.whatsapp_number);
+        } else {
+          setLoading(false); // No number to fetch transactions for
+        }
+      } else {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [router]);
+
+  const handleRoast = async () => {
+    setIsRoasting(true);
+    try {
+      const res = await fetch('/api/roast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile?.whatsapp_number })
+      });
+      const data = await res.json();
+      setRoast(data.roast);
+    } catch (e) {
+      setRoast('Failed to roast. You got lucky this time.');
+    }
+    setIsRoasting(false);
+  };
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expenseText.trim() || !profile?.whatsapp_number) return;
+    
+    setAddingExpense(true);
+    try {
+      const res = await fetch('/api/expense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: expenseText, userId: profile.whatsapp_number })
+      });
+      
+      if (res.ok) {
+        setExpenseText('');
+        fetchTransactions(profile.whatsapp_number); // Refresh data
+      } else {
+        alert('Failed to add expense');
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    setAddingExpense(false);
+  };
+
+  const currentMonthTransactions = transactions.filter(t => {
+    const d = new Date(t.created_at);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+
+  const leakage = currentMonthTransactions
+    .filter(t => t.is_unnecessary)
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const necessary = currentMonthTransactions
+    .filter(t => !t.is_unnecessary)
+    .reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const totalSpent = currentMonthTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const getCategoryIcon = (category: string) => {
+    switch (category.toLowerCase()) {
+      case 'dining out': return <Coffee className="text-orange-400" />;
+      case 'shopping': return <ShoppingBag className="text-pink-400" />;
+      case 'groceries': return <Home className="text-green-400" />;
+      default: return <FileText className="text-gray-400" />;
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="min-h-[calc(100vh-64px)] bg-[#030303] text-white p-6 md:p-12 font-sans selection:bg-orange-500/30 relative overflow-hidden flex flex-col justify-center">
+      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-orange-900/10 via-[#030303] to-[#030303] pointer-events-none -z-10"></div>
+      
+      {/* Massive Background Number */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none -z-0 opacity-5 select-none overflow-hidden">
+        <h1 className="text-[15rem] md:text-[30rem] font-black text-white leading-none tracking-tighter whitespace-nowrap">
+          {totalSpent.toLocaleString()}
+        </h1>
+      </div>
+
+      <div className="max-w-6xl mx-auto space-y-8 w-full relative z-10">
+        
+        {/* Removed redundant header (logo & profile) */}
+
+        {!loading && profile && !profile.whatsapp_number && (
+          <div className="bg-orange-500/10 backdrop-blur-md border border-orange-500/30 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-2xl">
+            <div>
+              <h3 className="text-orange-400 font-bold text-lg flex items-center gap-2"><AlertCircle size={20} /> Connect Your WhatsApp</h3>
+              <p className="text-orange-200/70 text-sm mt-1">Link your phone number to start tracking your daily expenses natively via WhatsApp messages.</p>
+            </div>
+            <Link href="/profile" className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl transition-colors whitespace-nowrap shadow-lg shadow-orange-500/20">
+              Link WhatsApp
+            </Link>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="animate-pulse flex space-x-4">
+            <div className="flex-1 space-y-6 py-1">
+              <div className="h-32 bg-[#1A1A1A] rounded-xl"></div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="h-2 bg-[#1A1A1A] rounded col-span-2"></div>
+                  <div className="h-2 bg-[#1A1A1A] rounded col-span-1"></div>
+                </div>
+                <div className="h-2 bg-[#1A1A1A] rounded"></div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-16">
+            
+            {/* Intro & Quick Add Section */}
+            <div className="text-center max-w-4xl mx-auto pt-4">
+              <h2 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+                Stop wondering <br />
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-400">where it went.</span>
+              </h2>
+              <p className="text-gray-400 text-lg md:text-xl mb-8 max-w-2xl mx-auto font-light leading-relaxed tracking-wide">
+                Log expenses via WhatsApp or below. Our AI instantly categorizes your spending and calculates your unnecessary "leakage."
+              </p>
+
+              {profile?.whatsapp_number && (
+                <form onSubmit={handleAddExpense} className="relative group max-w-2xl mx-auto">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-red-500/30 to-orange-500/30 rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-500"></div>
+                  <div className="relative flex gap-2 bg-[#0A0A0A]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl">
+                    <input 
+                      type="text" 
+                      placeholder="Type naturally... e.g. 'I just bought a $5 coffee'" 
+                      className="flex-1 bg-transparent px-4 py-3 text-lg focus:outline-none placeholder-gray-500 text-white"
+                      value={expenseText}
+                      onChange={(e) => setExpenseText(e.target.value)}
+                      disabled={addingExpense}
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={addingExpense || !expenseText.trim()}
+                      className="bg-white text-black px-8 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {addingExpense ? <span className="animate-pulse">Parsing AI...</span> : <><Plus size={20} /> Log</>}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Leakage Hero */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="col-span-1 md:col-span-2 relative overflow-hidden bg-gradient-to-br from-[#1A0A0A] to-[#0A0505] border border-red-900/20 rounded-[2rem] p-8 shadow-2xl group">
+                <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-700">
+                  <Flame size={120} />
+                </div>
+                <h2 className="text-red-500/80 font-bold tracking-widest text-xs uppercase mb-2">Total Financial Leakage</h2>
+                <div className="text-5xl md:text-7xl font-black text-white tracking-tighter mb-4">
+                  <span className="text-3xl text-red-500/50 mr-3 align-top">LKR</span>
+                  {leakage.toLocaleString()}
+                </div>
+                <p className="text-red-200/50 max-w-md text-base font-light leading-relaxed">
+                  Money you literally set on fire this month by buying things you didn't need.
+                </p>
+              </div>
+
+              <div className="col-span-1 flex flex-col gap-4">
+                <div className="bg-white/5 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-6 flex-1 flex flex-col justify-center hover:bg-white/10 transition-colors">
+                   <h2 className="text-gray-400 font-bold tracking-widest text-[10px] uppercase mb-2">Total Spent</h2>
+                   <div className="text-3xl font-bold text-white">
+                     <span className="text-sm text-gray-500 mr-2 font-normal">LKR</span>
+                     {totalSpent.toLocaleString()}
+                   </div>
+                </div>
+                <div className="bg-white/5 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-6 flex-1 flex flex-col justify-center hover:bg-white/10 transition-colors">
+                   <h2 className="text-gray-400 font-bold tracking-widest text-[10px] uppercase mb-2">Necessary Spend</h2>
+                   <div className="text-3xl font-bold text-white">
+                     <span className="text-sm text-gray-500 mr-2 font-normal">LKR</span>
+                     {necessary.toLocaleString()}
+                   </div>
+                </div>
+                <div className="bg-white/5 backdrop-blur-md border border-white/5 rounded-[1.5rem] p-6 flex-1 flex flex-col justify-center relative group/card hover:bg-white/10 transition-all">
+                   <Link href="/transactions" className="absolute inset-0 z-10"></Link>
+                   <div className="flex justify-between items-start">
+                     <h2 className="text-gray-400 font-bold tracking-widest text-[10px] uppercase mb-2">Transactions</h2>
+                     <div className="bg-white/10 p-1.5 rounded-full group-hover/card:bg-white group-hover/card:text-black transition-colors">
+                       <ArrowRight size={14} />
+                     </div>
+                   </div>
+                   <div className="text-3xl font-bold text-white">
+                     {currentMonthTransactions.length}
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
